@@ -11,7 +11,7 @@
 
 <div class="team-grid" id="team-grid">
     {% for team in teams %}
-    <a href="/team/{{ team.slug }}" class="team-card" data-name="{{ team.name|lower }}">
+    <a href="{{ url_for('team_detail', slug=team.slug) }}" class="team-card" data-name="{{ team.name|lower }}">
         <div class="team-card-header">
             <h3>{{ team.name }}</h3>
             <span class="record">{{ team.wins }}-{{ team.losses }}</span>
@@ -19,22 +19,22 @@
         <div class="team-card-stats">
             <div class="mini-stat">
                 <span class="label">PPG</span>
-                <span class="value">{{ "%.1f"|format(team.ppg) if team.ppg else "—" }}</span>
+                <span class="value">{{ team.ppg|stat_value('ppg') }}</span>
             </div>
             <div class="mini-stat">
                 <span class="label">Opp PPG</span>
-                <span class="value">{{ "%.1f"|format(team.opp_ppg) if team.opp_ppg else "—" }}</span>
+                <span class="value">{{ team.opp_ppg|stat_value('opp_ppg') }}</span>
             </div>
             <div class="mini-stat">
                 <span class="label">Net Rtg</span>
-                <span class="value {% if team.net_rating and team.net_rating > 0 %}positive{% elif team.net_rating and team.net_rating < 0 %}negative{% endif %}">
-                    {{ "%+.1f"|format(team.net_rating) if team.net_rating else "—" }}
+                <span class="value {{ team.net_rating|sign_class }}">
+                    {{ "%.1f"|format(team.net_rating) if team.net_rating is not none else "—" }}
                 </span>
             </div>
             <div class="mini-stat">
                 <span class="label">SRS</span>
-                <span class="value {% if team.srs and team.srs > 0 %}positive{% elif team.srs and team.srs < 0 %}negative{% endif %}">
-                    {{ "%+.1f"|format(team.srs) if team.srs else "—" }}
+                <span class="value {{ team.srs|sign_class }}">
+                    {{ team.srs|stat_value('srs') }}
                 </span>
             </div>
         </div>

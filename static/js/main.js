@@ -1,48 +1,65 @@
-// Team search filter on index page
-const searchInput = document.getElementById("team-search");
-if (searchInput) {
-    searchInput.addEventListener("input", function () {
-        const query = this.value.toLowerCase();
-        document.querySelectorAll(".team-card").forEach(function (card) {
-            const name = card.getAttribute("data-name") || "";
+function normalize(text) {
+    return (text || "").toLowerCase().trim();
+}
+
+function filterTeamCards() {
+    const searchInput = document.getElementById("team-search");
+    if (!searchInput) {
+        return;
+    }
+
+    searchInput.addEventListener("input", () => {
+        const query = normalize(searchInput.value);
+        document.querySelectorAll(".team-card").forEach((card) => {
+            const name = normalize(card.getAttribute("data-name"));
             card.style.display = name.includes(query) ? "" : "none";
         });
     });
 }
 
-// Autocomplete filter for comparison page selects
-document.querySelectorAll(".team-autocomplete").forEach(function (input) {
-    const targetId = input.getAttribute("data-target");
-    const select = document.getElementById(targetId);
-    if (!select) return;
+function rebuildOptions(select, options, query) {
+    select.innerHTML = "";
 
-    // Store all options
-    const allOptions = Array.from(select.options).map(function (opt) {
-        return { value: opt.value, text: opt.textContent };
-    });
+    options
+        .filter((option) => !query || normalize(option.text).includes(query))
+        .forEach((option) => {
+            const optionElement = document.createElement("option");
+            optionElement.value = option.value;
+            optionElement.textContent = option.text;
+            select.appendChild(optionElement);
+        });
+}
 
-    input.addEventListener("input", function () {
-        const query = this.value.toLowerCase();
-        select.innerHTML = "";
+function selectFirstTeamOption(select) {
+    const firstTeamIndex = Array.from(select.options).findIndex((option) => option.value);
+    if (firstTeamIndex >= 0) {
+        select.selectedIndex = firstTeamIndex;
+    }
+}
 
-        allOptions.forEach(function (opt) {
-            if (!query || opt.text.toLowerCase().includes(query)) {
-                const option = document.createElement("option");
-                option.value = opt.value;
-                option.textContent = opt.text;
-                select.appendChild(option);
+function wireComparisonAutocomplete() {
+    document.querySelectorAll(".team-autocomplete").forEach((input) => {
+        const targetId = input.getAttribute("data-target");
+        const select = targetId ? document.getElementById(targetId) : null;
+        if (!select) {
+            return;
+        }
+
+        const allOptions = Array.from(select.options, (option) => ({
+            value: option.value,
+            text: option.textContent,
+        }));
+
+        input.addEventListener("input", () => {
+            const query = normalize(input.value);
+            rebuildOptions(select, allOptions, query);
+
+            if (query) {
+                selectFirstTeamOption(select);
             }
         });
-
-        // Auto-select first match if there's a query
-        if (query && select.options.length > 0) {
-            // Skip the empty "Select a team" option if present
-            for (let i = 0; i < select.options.length; i++) {
-                if (select.options[i].value) {
-                    select.selectedIndex = i;
-                    break;
-                }
-            }
-        }
     });
-});
+}
+
+filterTeamCards();
+wireComparisonAutocomplete();

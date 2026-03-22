@@ -8,10 +8,10 @@
 </head>
 <body>
     <nav class="navbar">
-        <a href="/" class="nav-brand">March Madness Dashboard</a>
+        <a href="{{ url_for('index') }}" class="nav-brand">March Madness Dashboard</a>
         <div class="nav-links">
-            <a href="/">Teams</a>
-            <a href="/compare">Compare</a>
+            <a href="{{ url_for('index') }}">Teams</a>
+            <a href="{{ url_for('comparison') }}">Compare</a>
         </div>
     </nav>
 

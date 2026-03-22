@@ -1,5 +1,10 @@
+"""Development entrypoint that mirrors `flask --app app run`."""
+
+from app import app
+
+
 def main():
-    print("Hello from march-madness-dashboard!")
+    app.run(debug=True)
 
 
 if __name__ == "__main__":

@@ -1,20 +1,71 @@
 """Scraper for sports-reference.com college basketball stats."""
 
 import re
-import time
+
 import requests
 from bs4 import BeautifulSoup, Comment
+
 from config import (
-    SPORTSREF_BASE,
     SEASON,
+    SPORTSREF_BASE,
     USER_AGENT,
-    REQUEST_DELAY,
 )
 
 HEADERS = {"User-Agent": USER_AGENT}
 
 BASIC_URL = f"{SPORTSREF_BASE}/seasons/{SEASON}-school-stats.html"
 ADVANCED_URL = f"{SPORTSREF_BASE}/seasons/{SEASON}-advanced-school-stats.html"
+TEAM_PAGE_URL = f"{SPORTSREF_BASE}/schools/{{team_slug}}/men/{SEASON}.html"
+
+BASIC_TEAM_STAT_MAP = {
+    "wins": "wins",
+    "losses": "losses",
+    "fg_pct": "fg_pct",
+    "three_pt_pct": "fg3_pct",
+    "ft_pct": "ft_pct",
+    "srs": "srs",
+    "sos": "sos",
+}
+PER_GAME_TEAM_STAT_MAP = {
+    "ppg": "pts",
+    "opp_ppg": "opp_pts",
+    "rpg": "trb",
+    "apg": "ast",
+    "spg": "stl",
+    "bpg": "blk",
+    "topg": "tov",
+}
+ADVANCED_TEAM_STAT_MAP = {
+    "pace": "pace",
+    "efg_pct": "efg_pct",
+    "tov_pct": "tov_pct",
+    "orb_pct": "orb_pct",
+    "ft_rate": "ft_rate",
+    "three_pt_rate": "fg3a_per_fga_pct",
+    "ts_pct": "ts_pct",
+}
+PLAYER_STAT_MAP = {
+    "minutes_per_game": "mp_per_g",
+    "ppg": "pts_per_g",
+    "rpg": "trb_per_g",
+    "apg": "ast_per_g",
+    "spg": "stl_per_g",
+    "bpg": "blk_per_g",
+    "topg": "tov_per_g",
+    "fg_pct": "fg_pct",
+    "three_pt_pct": "fg3_pct",
+    "three_pt_made_pg": "fg3_per_g",
+    "three_pt_attempts_pg": "fg3a_per_g",
+    "ft_pct": "ft_pct",
+}
+ADVANCED_PLAYER_STAT_MAP = {
+    "per": "per",
+    "ts_pct": "ts_pct",
+    "efg_pct": "efg_pct",
+    "bpm": "bpm",
+    "ws": "ws",
+    "usage_rate": "usg_pct",
+}
 
 
 def _fetch(url):
@@ -80,30 +131,69 @@ def _get_stat(row, stat_name):
     return td.get_text(strip=True) if td else None
 
 
+def _find_first_table(html, soup, *table_ids):
+    """Return the first matching table from the page, including comment-wrapped tables."""
+    for table_id in table_ids:
+        table = soup.find("table", id=table_id) or _find_table(html, table_id)
+        if table:
+            return table
+    return None
+
+
+def _iter_data_rows(table):
+    """Yield non-header rows from a sports-reference table body."""
+    if table is None:
+        return
+
+    tbody = table.find("tbody")
+    if tbody is None:
+        return
+
+    for row in tbody.find_all("tr"):
+        if row.find("th", {"scope": "col"}):
+            continue
+        if "thead" in row.get("class", []):
+            continue
+        yield row
+
+
+def _extract_player_name(row):
+    """Read a player name from either the team-page or league-page column layout."""
+    player_cell = row.find(["td", "th"], {"data-stat": "name_display"})
+    if player_cell is None:
+        player_cell = row.find(["td", "th"], {"data-stat": "player"})
+    if not player_cell:
+        return None
+    return player_cell.get_text(strip=True)
+
+
+def _read_float_stats(row, stat_map):
+    return {field: _parse_float(_get_stat(row, source)) for field, source in stat_map.items()}
+
+
+def _read_int_stats(row, stat_map):
+    return {field: _parse_int(_get_stat(row, source)) for field, source in stat_map.items()}
+
+
+def _per_game(total, games):
+    if total is None or not games:
+        return None
+    return round(total / games, 1)
+
+
 def scrape_basic_team_stats():
     """Scrape basic per-game stats for all D1 teams. Returns list of dicts."""
     print("Fetching basic team stats...")
     html = _fetch(BASIC_URL)
     soup = BeautifulSoup(html, "lxml")
 
-    # The table ID is typically "basic_school_stats"
-    table = soup.find("table", id="basic_school_stats")
-    if not table:
-        # Try in comments
-        table = _find_table(html, "basic_school_stats")
+    table = _find_first_table(html, soup, "basic_school_stats")
     if not table:
         raise RuntimeError("Could not find basic_school_stats table")
 
-    tbody = table.find("tbody")
     teams = []
 
-    for row in tbody.find_all("tr"):
-        # Skip header rows that repeat in the middle
-        if row.find("th", {"scope": "col"}):
-            continue
-        if "thead" in row.get("class", []):
-            continue
-
+    for row in _iter_data_rows(table):
         school_cell = row.find("td", {"data-stat": "school_name"})
         if not school_cell:
             continue
@@ -124,38 +214,14 @@ def scrape_basic_team_stats():
         if not games or games == 0:
             continue
 
-        # Stats are season totals — compute per-game values
-        pts = _parse_float(_get_stat(row, "pts"))
-        opp_pts = _parse_float(_get_stat(row, "opp_pts"))
-        trb = _parse_float(_get_stat(row, "trb"))
-        ast = _parse_float(_get_stat(row, "ast"))
-        stl = _parse_float(_get_stat(row, "stl"))
-        blk = _parse_float(_get_stat(row, "blk"))
-        tov = _parse_float(_get_stat(row, "tov"))
-
-        def _per_game(val):
-            if val is not None and games:
-                return round(val / games, 1)
-            return None
-
         team = {
             "slug": slug,
             "name": name,
-            "wins": _parse_int(_get_stat(row, "wins")),
-            "losses": _parse_int(_get_stat(row, "losses")),
-            "ppg": _per_game(pts),
-            "opp_ppg": _per_game(opp_pts),
-            "fg_pct": _parse_float(_get_stat(row, "fg_pct")),
-            "three_pt_pct": _parse_float(_get_stat(row, "fg3_pct")),
-            "ft_pct": _parse_float(_get_stat(row, "ft_pct")),
-            "rpg": _per_game(trb),
-            "apg": _per_game(ast),
-            "spg": _per_game(stl),
-            "bpg": _per_game(blk),
-            "topg": _per_game(tov),
-            "srs": _parse_float(_get_stat(row, "srs")),
-            "sos": _parse_float(_get_stat(row, "sos")),
+            **_read_int_stats(row, {"wins": "wins", "losses": "losses"}),
+            **_read_float_stats(row, BASIC_TEAM_STAT_MAP),
         }
+        for field, source_stat in PER_GAME_TEAM_STAT_MAP.items():
+            team[field] = _per_game(_parse_float(_get_stat(row, source_stat)), games)
         teams.append(team)
 
     print(f"  Found {len(teams)} teams with basic stats")
@@ -168,21 +234,13 @@ def scrape_advanced_team_stats():
     html = _fetch(ADVANCED_URL)
     soup = BeautifulSoup(html, "lxml")
 
-    table = soup.find("table", id="adv_school_stats")
-    if not table:
-        table = _find_table(html, "adv_school_stats")
+    table = _find_first_table(html, soup, "adv_school_stats")
     if not table:
         raise RuntimeError("Could not find adv_school_stats table")
 
-    tbody = table.find("tbody")
     advanced = {}
 
-    for row in tbody.find_all("tr"):
-        if row.find("th", {"scope": "col"}):
-            continue
-        if "thead" in row.get("class", []):
-            continue
-
+    for row in _iter_data_rows(table):
         school_cell = row.find("td", {"data-stat": "school_name"})
         if not school_cell:
             continue
@@ -208,16 +266,10 @@ def scrape_advanced_team_stats():
             net_rtg = round(off_rtg - def_rtg, 1)
 
         advanced[slug] = {
-            "pace": _parse_float(_get_stat(row, "pace")),
+            **_read_float_stats(row, ADVANCED_TEAM_STAT_MAP),
             "offensive_rating": off_rtg,
             "defensive_rating": def_rtg,
             "net_rating": net_rtg,
-            "efg_pct": _parse_float(_get_stat(row, "efg_pct")),
-            "tov_pct": _parse_float(_get_stat(row, "tov_pct")),
-            "orb_pct": _parse_float(_get_stat(row, "orb_pct")),
-            "ft_rate": _parse_float(_get_stat(row, "ft_rate")),
-            "three_pt_rate": _parse_float(_get_stat(row, "fg3a_per_fga_pct")),
-            "ts_pct": _parse_float(_get_stat(row, "ts_pct")),
         }
 
     print(f"  Found advanced stats for {len(advanced)} teams")
@@ -226,7 +278,7 @@ def scrape_advanced_team_stats():
 
 def scrape_team_players(team_slug):
     """Scrape player stats for a single team. Returns list of player dicts."""
-    url = f"{SPORTSREF_BASE}/schools/{team_slug}/men/{SEASON}.html"
+    url = TEAM_PAGE_URL.format(team_slug=team_slug)
     print(f"  Fetching players for {team_slug}...")
     html = _fetch(url)
     soup = BeautifulSoup(html, "lxml")
@@ -234,85 +286,43 @@ def scrape_team_players(team_slug):
     # First get roster for class years and jersey numbers
     class_years = {}
     jersey_numbers = {}
-    roster_table = soup.find("table", id="roster")
-    if not roster_table:
-        roster_table = _find_table(html, "roster")
+    roster_table = _find_first_table(html, soup, "roster")
     if roster_table:
-        for row in roster_table.find("tbody").find_all("tr"):
-            player_cell = row.find("th", {"data-stat": "player"})
-            if player_cell is None:
-                player_cell = row.find("td", {"data-stat": "player"})
-            if not player_cell:
+        for row in _iter_data_rows(roster_table):
+            player_name = _extract_player_name(row)
+            if not player_name:
                 continue
-            pname = player_cell.get_text(strip=True)
             class_cell = row.find("td", {"data-stat": "class"})
             if class_cell:
-                class_years[pname] = class_cell.get_text(strip=True)
+                class_years[player_name] = class_cell.get_text(strip=True)
             number_cell = row.find("td", {"data-stat": "number"})
             if number_cell:
                 num = number_cell.get_text(strip=True)
                 if num:
-                    jersey_numbers[pname] = num
+                    jersey_numbers[player_name] = num
 
-    # Per-game stats table (players_per_game on team pages)
-    per_game_table = soup.find("table", id="players_per_game")
-    if not per_game_table:
-        per_game_table = _find_table(html, "players_per_game")
-    if not per_game_table:
-        # Fallback to other possible IDs
-        per_game_table = soup.find("table", id="per_game")
-        if not per_game_table:
-            per_game_table = _find_table(html, "per_game")
+    per_game_table = _find_first_table(html, soup, "players_per_game", "per_game")
     if not per_game_table:
         print(f"    No per_game table found for {team_slug}")
         return []
 
-    # Advanced stats table for PER, BPM, WS, usage (hidden in HTML comment)
-    adv_table = soup.find("table", id="players_advanced")
-    if not adv_table:
-        adv_table = _find_table(html, "players_advanced")
-    if not adv_table:
-        adv_table = soup.find("table", id="advanced")
-        if not adv_table:
-            adv_table = _find_table(html, "advanced")
+    adv_table = _find_first_table(html, soup, "players_advanced", "advanced")
 
     adv_stats = {}
     if adv_table:
-        for row in adv_table.find("tbody").find_all("tr"):
-            if row.find("th", {"scope": "col"}):
+        for row in _iter_data_rows(adv_table):
+            player_name = _extract_player_name(row)
+            if not player_name:
                 continue
-            # name_display is a td on team pages, player is a th on some pages
-            player_cell = row.find(["td", "th"], {"data-stat": "name_display"})
-            if player_cell is None:
-                player_cell = row.find(["td", "th"], {"data-stat": "player"})
-            if not player_cell:
-                continue
-            pname = player_cell.get_text(strip=True)
-            adv_stats[pname] = {
-                "per": _parse_float(_get_stat(row, "per")),
-                "ts_pct": _parse_float(_get_stat(row, "ts_pct")),
-                "efg_pct": _parse_float(_get_stat(row, "efg_pct")),
-                "bpm": _parse_float(_get_stat(row, "bpm")),
-                "ws": _parse_float(_get_stat(row, "ws")),
-                "usage_rate": _parse_float(_get_stat(row, "usg_pct")),
-            }
+            adv_stats[player_name] = _read_float_stats(row, ADVANCED_PLAYER_STAT_MAP)
 
     players = []
-    tbody = per_game_table.find("tbody")
-
-    for row in tbody.find_all("tr"):
-        if row.find("th", {"scope": "col"}):
+    for row in _iter_data_rows(per_game_table):
+        player_name = _extract_player_name(row)
+        if not player_name:
             continue
 
-        # name_display is a td on team pages, player is a th on some pages
-        player_cell = row.find(["td", "th"], {"data-stat": "name_display"})
-        if player_cell is None:
-            player_cell = row.find(["td", "th"], {"data-stat": "player"})
-        if not player_cell:
-            continue
-
-        pname = player_cell.get_text(strip=True)
-        if not pname or pname.lower() in ("team totals", "school totals"):
+        if player_name.lower() in ("team totals", "school totals"):
             continue
 
         pos = _get_stat(row, "pos") or ""
@@ -323,28 +333,16 @@ def scrape_team_players(team_slug):
             continue
 
         player = {
-            "name": pname,
-            "jersey_number": jersey_numbers.get(pname),
-            "class_year": class_years.get(pname),
+            "name": player_name,
+            "jersey_number": jersey_numbers.get(player_name),
+            "class_year": class_years.get(player_name),
             "position": pos.strip(),
             "games_played": games,
-            "minutes_per_game": _parse_float(_get_stat(row, "mp_per_g")),
-            "ppg": _parse_float(_get_stat(row, "pts_per_g")),
-            "rpg": _parse_float(_get_stat(row, "trb_per_g")),
-            "apg": _parse_float(_get_stat(row, "ast_per_g")),
-            "spg": _parse_float(_get_stat(row, "stl_per_g")),
-            "bpg": _parse_float(_get_stat(row, "blk_per_g")),
-            "topg": _parse_float(_get_stat(row, "tov_per_g")),
-            "fg_pct": _parse_float(_get_stat(row, "fg_pct")),
-            "three_pt_pct": _parse_float(_get_stat(row, "fg3_pct")),
-            "three_pt_made_pg": _parse_float(_get_stat(row, "fg3_per_g")),
-            "three_pt_attempts_pg": _parse_float(_get_stat(row, "fg3a_per_g")),
-            "ft_pct": _parse_float(_get_stat(row, "ft_pct")),
+            **_read_float_stats(row, PLAYER_STAT_MAP),
         }
 
-        # Merge advanced stats if available
-        if pname in adv_stats:
-            player.update(adv_stats[pname])
+        if player_name in adv_stats:
+            player.update(adv_stats[player_name])
 
         players.append(player)
 
@@ -359,9 +357,9 @@ def merge_team_data(basic_list, advanced_dict):
         adv = advanced_dict.get(slug, {})
         team.update(adv)
 
-        # drb_pct: estimate as 100 - orb_pct (approximate)
         orb = team.get("orb_pct")
         if orb is not None:
+            # Sports Reference does not publish a direct team DRB% column on this page.
             team.setdefault("drb_pct", round(100.0 - orb, 1))
         else:
             team.setdefault("drb_pct", None)

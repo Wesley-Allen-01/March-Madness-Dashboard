@@ -1,23 +1,43 @@
 """March Madness Dashboard — Flask application."""
 
 import time
-import click
-from flask import Flask, render_template, request, jsonify
 
-from config import BASIC_STAT_DEFINITIONS, ADVANCED_STAT_DEFINITIONS, SOS_DEFINITIONS
+import click
+from flask import Flask, jsonify, render_template, request
+
+from config import (
+    ADVANCED_STAT_DEFINITIONS,
+    BASIC_STAT_DEFINITIONS,
+    REQUEST_DELAY,
+    SOS_DEFINITIONS,
+)
 from db import (
-    init_db, get_connection, get_all_teams, get_team, get_players,
-    get_leading_scorer, get_best_three_pt_shooter, get_draft_prospects,
-    upsert_team, upsert_players, has_players, search_teams,
+    db_session,
+    get_all_teams,
+    get_best_three_pt_shooter,
+    get_draft_prospects,
+    get_leading_scorer,
+    get_players,
+    get_team,
+    has_players,
+    init_db,
+    search_teams,
+    upsert_players,
+    upsert_team,
 )
 from scrapers.sportsref import (
-    scrape_basic_team_stats, scrape_advanced_team_stats,
-    merge_team_data, scrape_team_players,
+    merge_team_data,
+    scrape_advanced_team_stats,
+    scrape_basic_team_stats,
+    scrape_team_players,
 )
 from scrapers.draft_prospects import apply_draft_prospects, apply_player_flags
 from services.comparison import compare_teams
+from services.presentation import format_stat_value, sign_class
 
 app = Flask(__name__)
+app.add_template_filter(format_stat_value, "stat_value")
+app.add_template_filter(sign_class, "sign_class")
 
 
 # ---------------------------------------------------------------------------
@@ -29,9 +49,7 @@ app = Flask(__name__)
 def fetch_data(players):
     """Scrape team data from sports-reference and populate the database."""
     init_db()
-    conn = get_connection()
-
-    try:
+    with db_session() as conn:
         # Step 1: Basic team stats (1 HTTP request)
         basic = scrape_basic_team_stats()
 
@@ -61,15 +79,12 @@ def fetch_data(players):
                         conn.commit()
                 except Exception as e:
                     print(f"    Error fetching {slug}: {e}")
-                time.sleep(3.1)
+                time.sleep(REQUEST_DELAY)
 
             # Apply draft prospect flags
             print("Applying draft prospect flags...")
             apply_draft_prospects(conn)
             apply_player_flags(conn)
-
-    finally:
-        conn.close()
 
     print("Done!")
 
@@ -93,34 +108,44 @@ def ensure_players(conn, slug):
         print(f"Error fetching players for {slug}: {e}")
 
 
+def serialize_team_brief(team):
+    """Return the small team payload used by the JSON endpoints."""
+    return {
+        "slug": team["slug"],
+        "name": team["name"],
+        "conference": team["conference"],
+    }
+
+
+def fetch_team_list():
+    """Load the global team list for index and compare views."""
+    with db_session() as conn:
+        return get_all_teams(conn)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
 @app.route("/")
 def index():
-    conn = get_connection()
-    teams = get_all_teams(conn)
-    conn.close()
+    teams = fetch_team_list()
     return render_template("index.html", teams=teams)
 
 
 @app.route("/team/<slug>")
 def team_detail(slug):
-    conn = get_connection()
-    team = get_team(conn, slug)
-    if not team:
-        conn.close()
-        return "Team not found", 404
+    with db_session() as conn:
+        team = get_team(conn, slug)
+        if not team:
+            return "Team not found", 404
 
-    # Lazy-load players
-    ensure_players(conn, slug)
+        ensure_players(conn, slug)
 
-    players = get_players(conn, slug)
-    scorer = get_leading_scorer(conn, slug)
-    shooter = get_best_three_pt_shooter(conn, slug)
-    prospects = get_draft_prospects(conn, slug)
-    conn.close()
+        players = get_players(conn, slug)
+        scorer = get_leading_scorer(conn, slug)
+        shooter = get_best_three_pt_shooter(conn, slug)
+        prospects = get_draft_prospects(conn, slug)
 
     return render_template(
         "team.html",
@@ -139,20 +164,14 @@ def team_detail(slug):
 def comparison():
     slug1 = request.args.get("team1", "")
     slug2 = request.args.get("team2", "")
+    with db_session() as conn:
+        teams = get_all_teams(conn)
+        data = None
 
-    conn = get_connection()
-
-    # Get team list for dropdowns
-    teams = get_all_teams(conn)
-
-    data = None
-    if slug1 and slug2:
-        # Lazy-load players for both teams
-        ensure_players(conn, slug1)
-        ensure_players(conn, slug2)
-        data = compare_teams(conn, slug1, slug2)
-
-    conn.close()
+        if slug1 and slug2:
+            ensure_players(conn, slug1)
+            ensure_players(conn, slug2)
+            data = compare_teams(conn, slug1, slug2)
 
     return render_template(
         "comparison.html",
@@ -168,21 +187,18 @@ def comparison():
 
 @app.route("/api/teams")
 def api_teams():
-    conn = get_connection()
-    teams = get_all_teams(conn)
-    conn.close()
-    return jsonify([{"slug": t["slug"], "name": t["name"], "conference": t["conference"]} for t in teams])
+    teams = fetch_team_list()
+    return jsonify([serialize_team_brief(team) for team in teams])
 
 
 @app.route("/api/search")
 def api_search():
-    q = request.args.get("q", "")
-    if len(q) < 2:
+    query = request.args.get("q", "").strip()
+    if len(query) < 2:
         return jsonify([])
-    conn = get_connection()
-    results = search_teams(conn, q)
-    conn.close()
-    return jsonify([{"slug": r["slug"], "name": r["name"], "conference": r["conference"]} for r in results])
+    with db_session() as conn:
+        results = search_teams(conn, query)
+    return jsonify([serialize_team_brief(team) for team in results])
 
 
 if __name__ == "__main__":

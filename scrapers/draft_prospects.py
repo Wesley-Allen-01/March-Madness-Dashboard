@@ -2,7 +2,37 @@
 
 import json
 import os
+
 from config import DRAFT_PROSPECTS_PATH
+
+STATISTICAL_PROSPECT_LABEL = "Statistical Prospect"
+PROSPECT_HEURISTIC_SQL = (
+    """
+    UPDATE players
+    SET is_draft_prospect = 1,
+        draft_projection = COALESCE(draft_projection, ?)
+    WHERE is_draft_prospect = 0
+      AND class_year IN ('FR', 'SO')
+      AND per IS NOT NULL AND per >= 20.0
+      AND ppg >= 15.0
+    """,
+    """
+    UPDATE players
+    SET is_draft_prospect = 1,
+        draft_projection = COALESCE(draft_projection, ?)
+    WHERE is_draft_prospect = 0
+      AND bpm IS NOT NULL AND bpm >= 8.0
+    """,
+    """
+    UPDATE players
+    SET is_draft_prospect = 1,
+        draft_projection = COALESCE(draft_projection, ?)
+    WHERE is_draft_prospect = 0
+      AND usage_rate IS NOT NULL AND usage_rate >= 28.0
+      AND ts_pct IS NOT NULL AND ts_pct >= 0.58
+      AND ppg >= 16.0
+    """,
+)
 
 
 def load_curated_prospects():
@@ -16,49 +46,21 @@ def load_curated_prospects():
 
 def apply_draft_prospects(conn):
     """Mark players as draft prospects using curated list + stat heuristics."""
-    # Reset all draft flags
     conn.execute("UPDATE players SET is_draft_prospect = 0, draft_projection = NULL")
 
-    # Apply curated prospects
-    prospects = load_curated_prospects()
-    for p in prospects:
-        name = p["name"]
-        team_slug = p["team"]
-        projection = p.get("projection", "Prospect")
+    for prospect in load_curated_prospects():
         conn.execute(
             """UPDATE players SET is_draft_prospect = 1, draft_projection = ?
                WHERE team_slug = ? AND name LIKE ?""",
-            (projection, team_slug, f"%{name}%"),
+            (
+                prospect.get("projection", "Prospect"),
+                prospect["team"],
+                f"%{prospect['name']}%",
+            ),
         )
 
-    # Statistical heuristic: flag players with outstanding stats
-    # Freshmen/Sophomores with high PER and scoring
-    conn.execute("""
-        UPDATE players SET is_draft_prospect = 1,
-            draft_projection = COALESCE(draft_projection, 'Statistical Prospect')
-        WHERE is_draft_prospect = 0
-        AND class_year IN ('FR', 'SO')
-        AND per IS NOT NULL AND per >= 20.0
-        AND ppg >= 15.0
-    """)
-
-    # Any player with elite BPM
-    conn.execute("""
-        UPDATE players SET is_draft_prospect = 1,
-            draft_projection = COALESCE(draft_projection, 'Statistical Prospect')
-        WHERE is_draft_prospect = 0
-        AND bpm IS NOT NULL AND bpm >= 8.0
-    """)
-
-    # High usage + efficiency combo
-    conn.execute("""
-        UPDATE players SET is_draft_prospect = 1,
-            draft_projection = COALESCE(draft_projection, 'Statistical Prospect')
-        WHERE is_draft_prospect = 0
-        AND usage_rate IS NOT NULL AND usage_rate >= 28.0
-        AND ts_pct IS NOT NULL AND ts_pct >= 0.58
-        AND ppg >= 16.0
-    """)
+    for heuristic_sql in PROSPECT_HEURISTIC_SQL:
+        conn.execute(heuristic_sql, (STATISTICAL_PROSPECT_LABEL,))
 
     conn.commit()
     count = conn.execute("SELECT COUNT(*) as cnt FROM players WHERE is_draft_prospect = 1").fetchone()["cnt"]

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import player_identity, stat_box %}
 
 {% block title %}{{ team.name }} — March Madness Dashboard{% endblock %}
 
@@ -9,95 +10,53 @@
         <span class="record-large">{{ team.wins }}-{{ team.losses }}</span>
         {% if team.conference %}<span class="conference">{{ team.conference }}</span>{% endif %}
     </div>
-    <a href="/compare?team1={{ team.slug }}" class="btn btn-compare">Compare with another team</a>
+    <a href="{{ url_for('comparison', team1=team.slug) }}" class="btn btn-compare">Compare with another team</a>
 </div>
 
-<!-- Basic Stats -->
 <section class="stats-section">
     <h2>Team Statistics</h2>
     <div class="stats-grid">
         {% for key, (label, tooltip, _) in basic_stats.items() %}
-        <div class="stat-box" title="{{ tooltip }}">
-            <span class="stat-label">{{ label }} <span class="tooltip-icon">?</span></span>
-            {% set val = team[key] %}
-            {% if val is not none %}
-                {% if key in ('fg_pct', 'three_pt_pct', 'ft_pct') %}
-                    <span class="stat-value">{{ "%.1f"|format(val * 100 if val < 1 else val) }}%</span>
-                {% elif val is number and val != val|int %}
-                    <span class="stat-value">{{ "%.1f"|format(val) }}</span>
-                {% else %}
-                    <span class="stat-value">{{ val }}</span>
-                {% endif %}
-            {% else %}
-                <span class="stat-value">—</span>
-            {% endif %}
-        </div>
+        {{ stat_box(team, key, label, tooltip) }}
         {% endfor %}
     </div>
 </section>
 
-<!-- Advanced Stats -->
 <section class="stats-section">
     <h2>Advanced Statistics</h2>
     <div class="stats-grid">
         {% for key, (label, tooltip, _) in advanced_stats.items() %}
-        <div class="stat-box" title="{{ tooltip }}">
-            <span class="stat-label">{{ label }} <span class="tooltip-icon">?</span></span>
-            {% set val = team[key] %}
-            {% if val is not none %}
-                {% if key in ('efg_pct', 'ts_pct', 'ft_rate', 'three_pt_rate') and val < 1 %}
-                    <span class="stat-value">{{ "%.1f"|format(val * 100) }}%</span>
-                {% elif key in ('tov_pct', 'orb_pct', 'drb_pct') %}
-                    <span class="stat-value">{{ "%.1f"|format(val) }}%</span>
-                {% else %}
-                    <span class="stat-value">{{ "%.1f"|format(val) }}</span>
-                {% endif %}
-            {% else %}
-                <span class="stat-value">—</span>
-            {% endif %}
-        </div>
+        {{ stat_box(team, key, label, tooltip) }}
         {% endfor %}
     </div>
 </section>
 
-<!-- Strength of Schedule -->
 <section class="stats-section">
     <h2>Strength of Schedule</h2>
     <div class="stats-grid">
         {% for key, (label, tooltip, _) in sos_stats.items() %}
-        <div class="stat-box" title="{{ tooltip }}">
-            <span class="stat-label">{{ label }} <span class="tooltip-icon">?</span></span>
-            {% set val = team[key] %}
-            {% if val is not none %}
-                <span class="stat-value {% if val > 0 %}positive{% elif val < 0 %}negative{% endif %}">
-                    {{ "%+.2f"|format(val) }}
-                </span>
-            {% else %}
-                <span class="stat-value">—</span>
-            {% endif %}
-        </div>
+        {{ stat_box(team, key, label, tooltip) }}
         {% endfor %}
     </div>
 </section>
 
-<!-- Key Players -->
 <section class="stats-section">
     <h2>Key Players</h2>
     <div class="player-highlights">
         {% if scorer %}
         <div class="player-card">
             <h3>Leading Scorer</h3>
-            <div class="player-name">{% if scorer.jersey_number %}#{{ scorer.jersey_number }} {% endif %}{{ scorer.name }}</div>
+            <div class="player-name">{{ player_identity(scorer) }}</div>
             <div class="player-meta">{{ scorer.position }} · {{ scorer.class_year or "—" }}</div>
             <div class="player-stats">
-                <span><strong>{{ "%.1f"|format(scorer.ppg) }}</strong> PPG</span>
-                <span><strong>{{ "%.1f"|format(scorer.rpg) if scorer.rpg else "—" }}</strong> RPG</span>
-                <span><strong>{{ "%.1f"|format(scorer.apg) if scorer.apg else "—" }}</strong> APG</span>
+                <span><strong>{{ scorer.ppg|stat_value('ppg') }}</strong> PPG</span>
+                <span><strong>{{ scorer.rpg|stat_value('rpg') }}</strong> RPG</span>
+                <span><strong>{{ scorer.apg|stat_value('apg') }}</strong> APG</span>
             </div>
             <div class="player-shooting">
-                <span>FG: {{ "%.1f"|format(scorer.fg_pct * 100 if scorer.fg_pct and scorer.fg_pct < 1 else (scorer.fg_pct or 0)) }}%</span>
-                <span>3PT: {{ "%.1f"|format(scorer.three_pt_pct * 100 if scorer.three_pt_pct and scorer.three_pt_pct < 1 else (scorer.three_pt_pct or 0)) }}%</span>
-                <span>FT: {{ "%.1f"|format(scorer.ft_pct * 100 if scorer.ft_pct and scorer.ft_pct < 1 else (scorer.ft_pct or 0)) }}%</span>
+                <span>FG: {{ scorer.fg_pct|stat_value('fg_pct') }}</span>
+                <span>3PT: {{ scorer.three_pt_pct|stat_value('three_pt_pct') }}</span>
+                <span>FT: {{ scorer.ft_pct|stat_value('ft_pct') }}</span>
             </div>
         </div>
         {% endif %}
@@ -105,19 +64,18 @@
         {% if shooter %}
         <div class="player-card">
             <h3>Best 3-Point Shooter</h3>
-            <div class="player-name">{% if shooter.jersey_number %}#{{ shooter.jersey_number }} {% endif %}{{ shooter.name }}</div>
+            <div class="player-name">{{ player_identity(shooter) }}</div>
             <div class="player-meta">{{ shooter.position }} · {{ shooter.class_year or "—" }}</div>
             <div class="player-stats">
-                <span><strong>{{ "%.1f"|format(shooter.three_pt_pct * 100 if shooter.three_pt_pct and shooter.three_pt_pct < 1 else (shooter.three_pt_pct or 0)) }}%</strong> 3PT%</span>
-                <span><strong>{{ "%.1f"|format(shooter.three_pt_made_pg) if shooter.three_pt_made_pg else "—" }}</strong> 3PM/G</span>
-                <span><strong>{{ "%.1f"|format(shooter.three_pt_attempts_pg) if shooter.three_pt_attempts_pg else "—" }}</strong> 3PA/G</span>
+                <span><strong>{{ shooter.three_pt_pct|stat_value('three_pt_pct') }}</strong> 3PT%</span>
+                <span><strong>{{ shooter.three_pt_made_pg|stat_value('three_pt_made_pg') }}</strong> 3PM/G</span>
+                <span><strong>{{ shooter.three_pt_attempts_pg|stat_value('three_pt_attempts_pg') }}</strong> 3PA/G</span>
             </div>
         </div>
         {% endif %}
     </div>
 </section>
 
-<!-- Draft Prospects -->
 {% if prospects %}
 <section class="stats-section">
     <h2>Potential NBA Draft Prospects</h2>
@@ -130,11 +88,11 @@
             </div>
             <div class="prospect-meta">{{ p.position }} · {{ p.class_year or "—" }}</div>
             <div class="prospect-stats">
-                <span>{{ "%.1f"|format(p.ppg) }} PPG</span>
-                <span>{{ "%.1f"|format(p.rpg) if p.rpg else "—" }} RPG</span>
-                <span>{{ "%.1f"|format(p.apg) if p.apg else "—" }} APG</span>
-                {% if p.per %}<span>{{ "%.1f"|format(p.per) }} PER</span>{% endif %}
-                {% if p.bpm %}<span>{{ "%+.1f"|format(p.bpm) }} BPM</span>{% endif %}
+                <span>{{ p.ppg|stat_value('ppg') }} PPG</span>
+                <span>{{ p.rpg|stat_value('rpg') }} RPG</span>
+                <span>{{ p.apg|stat_value('apg') }} APG</span>
+                {% if p.per %}<span>{{ p.per|stat_value('per') }} PER</span>{% endif %}
+                {% if p.bpm %}<span>{{ "%.1f"|format(p.bpm) if p.bpm is not none else "—" }} BPM</span>{% endif %}
             </div>
         </div>
         {% endfor %}
@@ -142,7 +100,6 @@
 </section>
 {% endif %}
 
-<!-- Full Roster -->
 <section class="stats-section">
     <h2>Roster Stats</h2>
     <div class="table-wrapper">
@@ -173,15 +130,15 @@
                     <td>{{ p.position or "—" }}</td>
                     <td>{{ p.class_year or "—" }}</td>
                     <td>{{ p.games_played or "—" }}</td>
-                    <td>{{ "%.1f"|format(p.minutes_per_game) if p.minutes_per_game else "—" }}</td>
-                    <td>{{ "%.1f"|format(p.ppg) if p.ppg else "—" }}</td>
-                    <td>{{ "%.1f"|format(p.rpg) if p.rpg else "—" }}</td>
-                    <td>{{ "%.1f"|format(p.apg) if p.apg else "—" }}</td>
-                    <td>{{ "%.1f"|format(p.spg) if p.spg else "—" }}</td>
-                    <td>{{ "%.1f"|format(p.bpg) if p.bpg else "—" }}</td>
-                    <td>{{ "%.1f"|format(p.fg_pct * 100 if p.fg_pct and p.fg_pct < 1 else (p.fg_pct or 0)) }}%</td>
-                    <td>{{ "%.1f"|format(p.three_pt_pct * 100 if p.three_pt_pct and p.three_pt_pct < 1 else (p.three_pt_pct or 0)) }}%</td>
-                    <td>{{ "%.1f"|format(p.ft_pct * 100 if p.ft_pct and p.ft_pct < 1 else (p.ft_pct or 0)) }}%</td>
+                    <td>{{ p.minutes_per_game|stat_value('minutes_per_game') }}</td>
+                    <td>{{ p.ppg|stat_value('ppg') }}</td>
+                    <td>{{ p.rpg|stat_value('rpg') }}</td>
+                    <td>{{ p.apg|stat_value('apg') }}</td>
+                    <td>{{ p.spg|stat_value('spg') }}</td>
+                    <td>{{ p.bpg|stat_value('bpg') }}</td>
+                    <td>{{ p.fg_pct|stat_value('fg_pct') }}</td>
+                    <td>{{ p.three_pt_pct|stat_value('three_pt_pct') }}</td>
+                    <td>{{ p.ft_pct|stat_value('ft_pct') }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

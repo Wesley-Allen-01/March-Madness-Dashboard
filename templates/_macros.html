@@ -1,0 +1,12 @@
+{% macro stat_box(team, key, label, tooltip) -%}
+<div class="stat-box" title="{{ tooltip }}">
+    <span class="stat-label">{{ label }} <span class="tooltip-icon">?</span></span>
+    <span class="stat-value {{ team[key]|sign_class if key in ('srs', 'sos') else '' }}">
+        {{ team[key]|stat_value(key) }}
+    </span>
+</div>
+{%- endmacro %}
+
+{% macro player_identity(player) -%}
+{% if player.jersey_number %}#{{ player.jersey_number }} {% endif %}{{ player.name }}
+{%- endmacro %}
