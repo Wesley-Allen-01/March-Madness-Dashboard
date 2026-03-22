@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Teams — March Madness Dashboard{% endblock %}
+
+{% block content %}
+<h1>Compare Teams</h1>
+
+<form class="compare-form" method="get" action="/compare">
+    <div class="compare-selectors">
+        <div class="selector">
+            <label for="team1">Team 1</label>
+            <input type="text" id="team1-search" placeholder="Search..." autocomplete="off" class="team-autocomplete" data-target="team1">
+            <select name="team1" id="team1">
+                <option value="">Select a team</option>
+                {% for t in teams %}
+                <option value="{{ t.slug }}" {% if t.slug == team1_slug %}selected{% endif %}>{{ t.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <span class="vs">VS</span>
+        <div class="selector">
+            <label for="team2">Team 2</label>
+            <input type="text" id="team2-search" placeholder="Search..." autocomplete="off" class="team-autocomplete" data-target="team2">
+            <select name="team2" id="team2">
+                <option value="">Select a team</option>
+                {% for t in teams %}
+                <option value="{{ t.slug }}" {% if t.slug == team2_slug %}selected{% endif %}>{{ t.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-compare">Compare</button>
+    </div>
+</form>
+
+{% if data %}
+<div class="comparison-results">
+    <div class="comparison-header">
+        <div class="team-col team1-col">
+            <h2><a href="/team/{{ data.team1.slug }}">{{ data.team1.name }}</a></h2>
+            <span class="record">{{ data.team1.wins }}-{{ data.team1.losses }}</span>
+        </div>
+        <div class="stat-col">Stat</div>
+        <div class="team-col team2-col">
+            <h2><a href="/team/{{ data.team2.slug }}">{{ data.team2.name }}</a></h2>
+            <span class="record">{{ data.team2.wins }}-{{ data.team2.losses }}</span>
+        </div>
+    </div>
+
+    {% for comp in data.comparisons %}
+    <div class="comparison-row">
+        <div class="team-col team1-col {% if comp.winner == 1 %}winner{% endif %}">
+            {% if comp.team1_val is not none %}
+                {% if comp.key in ('fg_pct', 'three_pt_pct', 'ft_pct', 'efg_pct', 'ts_pct', 'ft_rate', 'three_pt_rate') and comp.team1_val < 1 %}
+                    {{ "%.1f"|format(comp.team1_val * 100) }}%
+                {% elif comp.key in ('tov_pct', 'orb_pct', 'drb_pct') %}
+                    {{ "%.1f"|format(comp.team1_val) }}%
+                {% elif comp.key in ('srs', 'sos') %}
+                    {{ "%+.2f"|format(comp.team1_val) }}
+                {% elif comp.team1_val is number and comp.team1_val != comp.team1_val|int %}
+                    {{ "%.1f"|format(comp.team1_val) }}
+                {% else %}
+                    {{ comp.team1_val }}
+                {% endif %}
+            {% else %}—{% endif %}
+        </div>
+        <div class="stat-col" title="{{ comp.tooltip }}">
+            {{ comp.label }} <span class="tooltip-icon">?</span>
+        </div>
+        <div class="team-col team2-col {% if comp.winner == 2 %}winner{% endif %}">
+            {% if comp.team2_val is not none %}
+                {% if comp.key in ('fg_pct', 'three_pt_pct', 'ft_pct', 'efg_pct', 'ts_pct', 'ft_rate', 'three_pt_rate') and comp.team2_val < 1 %}
+                    {{ "%.1f"|format(comp.team2_val * 100) }}%
+                {% elif comp.key in ('tov_pct', 'orb_pct', 'drb_pct') %}
+                    {{ "%.1f"|format(comp.team2_val) }}%
+                {% elif comp.key in ('srs', 'sos') %}
+                    {{ "%+.2f"|format(comp.team2_val) }}
+                {% elif comp.team2_val is number and comp.team2_val != comp.team2_val|int %}
+                    {{ "%.1f"|format(comp.team2_val) }}
+                {% else %}
+                    {{ comp.team2_val }}
+                {% endif %}
+            {% else %}—{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Key Players Comparison -->
+    <h2 class="section-divider">Key Players</h2>
+
+    <div class="players-comparison">
+        <div class="player-compare-section">
+            <h3>Leading Scorer</h3>
+            <div class="player-compare-row">
+                <div class="team-col team1-col">
+                    {% if data.team1_scorer %}
+                    <div class="player-name">{{ data.team1_scorer.name }}</div>
+                    <div class="player-meta">{{ data.team1_scorer.position }} · {{ data.team1_scorer.class_year or "—" }}</div>
+                    <div>{{ "%.1f"|format(data.team1_scorer.ppg) }} PPG · {{ "%.1f"|format(data.team1_scorer.rpg) if data.team1_scorer.rpg else "—" }} RPG · {{ "%.1f"|format(data.team1_scorer.apg) if data.team1_scorer.apg else "—" }} APG</div>
+                    {% else %}—{% endif %}
+                </div>
+                <div class="stat-col"></div>
+                <div class="team-col team2-col">
+                    {% if data.team2_scorer %}
+                    <div class="player-name">{{ data.team2_scorer.name }}</div>
+                    <div class="player-meta">{{ data.team2_scorer.position }} · {{ data.team2_scorer.class_year or "—" }}</div>
+                    <div>{{ "%.1f"|format(data.team2_scorer.ppg) }} PPG · {{ "%.1f"|format(data.team2_scorer.rpg) if data.team2_scorer.rpg else "—" }} RPG · {{ "%.1f"|format(data.team2_scorer.apg) if data.team2_scorer.apg else "—" }} APG</div>
+                    {% else %}—{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="player-compare-section">
+            <h3>Best 3-Point Shooter</h3>
+            <div class="player-compare-row">
+                <div class="team-col team1-col">
+                    {% if data.team1_shooter %}
+                    <div class="player-name">{{ data.team1_shooter.name }}</div>
+                    <div>{{ "%.1f"|format(data.team1_shooter.three_pt_pct * 100 if data.team1_shooter.three_pt_pct and data.team1_shooter.three_pt_pct < 1 else (data.team1_shooter.three_pt_pct or 0)) }}% · {{ "%.1f"|format(data.team1_shooter.three_pt_made_pg) if data.team1_shooter.three_pt_made_pg else "—" }} 3PM/G</div>
+                    {% else %}—{% endif %}
+                </div>
+                <div class="stat-col"></div>
+                <div class="team-col team2-col">
+                    {% if data.team2_shooter %}
+                    <div class="player-name">{{ data.team2_shooter.name }}</div>
+                    <div>{{ "%.1f"|format(data.team2_shooter.three_pt_pct * 100 if data.team2_shooter.three_pt_pct and data.team2_shooter.three_pt_pct < 1 else (data.team2_shooter.three_pt_pct or 0)) }}% · {{ "%.1f"|format(data.team2_shooter.three_pt_made_pg) if data.team2_shooter.three_pt_made_pg else "—" }} 3PM/G</div>
+                    {% else %}—{% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if data.team1_prospects or data.team2_prospects %}
+        <div class="player-compare-section">
+            <h3>Draft Prospects</h3>
+            <div class="player-compare-row">
+                <div class="team-col team1-col">
+                    {% for p in data.team1_prospects %}
+                    <div class="prospect-mini">
+                        <strong>{{ p.name }}</strong> ({{ p.draft_projection }})
+                        <br>{{ "%.1f"|format(p.ppg) }} PPG
+                        {% if p.per %} · {{ "%.1f"|format(p.per) }} PER{% endif %}
+                    </div>
+                    {% endfor %}
+                    {% if not data.team1_prospects %}—{% endif %}
+                </div>
+                <div class="stat-col"></div>
+                <div class="team-col team2-col">
+                    {% for p in data.team2_prospects %}
+                    <div class="prospect-mini">
+                        <strong>{{ p.name }}</strong> ({{ p.draft_projection }})
+                        <br>{{ "%.1f"|format(p.ppg) }} PPG
+                        {% if p.per %} · {{ "%.1f"|format(p.per) }} PER{% endif %}
+                    </div>
+                    {% endfor %}
+                    {% if not data.team2_prospects %}—{% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% elif team1_slug or team2_slug %}
+<p class="empty-state">Select both teams to compare.</p>
+{% else %}
+<p class="empty-state">Select two teams above to see a side-by-side comparison.</p>
+{% endif %}
+{% endblock %}
