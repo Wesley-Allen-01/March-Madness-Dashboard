@@ -29,6 +29,7 @@ uv run flask --app app.py fetch-data --players
 ## Features
 
 - **Index page** — searchable grid of all D1 teams with PPG, Opp PPG, Net Rating, SRS
+- **Raw Data** (`/data`) — sortable, filterable full-team table across all tracked stat columns, including NCAA tournament participation
 - **Team detail** (`/team/<slug>`) — full stats for a single team:
   - Basic stats: PPG, Opp PPG, RPG, APG, SPG, BPG, TOPG, FG%, 3PT%, FT%
   - Advanced stats with tooltip definitions: OffRtg, DefRtg, Net Rating, Pace, eFG%, TS%, TOV%, ORB%, DRB%, FT Rate, 3PT Rate

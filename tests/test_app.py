@@ -65,6 +65,25 @@ def test_comparison_page_renders_comparison_results(client, monkeypatch):
     assert "Draft Prospects" in text
 
 
+def test_raw_data_page_renders_sortable_team_table(client, monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "load_tournament_team_slugs", lambda: {"alpha"})
+
+    response = client.get("/data")
+
+    text = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Raw Team Data" in text
+    assert "Alpha University" in text
+    assert "Tournament" in text
+    assert 'data-value="yes"' in text
+    assert 'data-value="no"' in text
+    assert "Conference" in text
+    assert "Offensive Rating" in text
+    assert "data-raw-data-table" in text
+
+
 def test_api_teams_returns_brief_payload(client):
     response = client.get("/api/teams")
 

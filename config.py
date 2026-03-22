@@ -3,6 +3,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "dashboard.db")
 DRAFT_PROSPECTS_PATH = os.path.join(BASE_DIR, "data", "draft_prospects_2026.json")
+TOURNAMENT_TEAMS_PATH = os.path.join(BASE_DIR, "data", "tournament_teams_2026.json")
 
 SEASON = 2026
 

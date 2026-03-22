@@ -1,5 +1,7 @@
 """March Madness Dashboard — Flask application."""
 
+import json
+import os
 import time
 
 import click
@@ -10,6 +12,7 @@ from config import (
     BASIC_STAT_DEFINITIONS,
     REQUEST_DELAY,
     SOS_DEFINITIONS,
+    TOURNAMENT_TEAMS_PATH,
 )
 from db import (
     db_session,
@@ -33,7 +36,7 @@ from scrapers.sportsref import (
 )
 from scrapers.draft_prospects import apply_draft_prospects, apply_player_flags
 from services.comparison import compare_teams
-from services.presentation import format_stat_value, sign_class
+from services.presentation import build_stat_definitions, format_stat_value, sign_class
 
 app = Flask(__name__)
 app.add_template_filter(format_stat_value, "stat_value")
@@ -123,6 +126,14 @@ def fetch_team_list():
         return get_all_teams(conn)
 
 
+def load_tournament_team_slugs():
+    """Load the curated list of tournament teams for the current season."""
+    if not os.path.exists(TOURNAMENT_TEAMS_PATH):
+        return set()
+    with open(TOURNAMENT_TEAMS_PATH) as f:
+        return set(json.load(f))
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -183,6 +194,34 @@ def comparison():
         advanced_stats=ADVANCED_STAT_DEFINITIONS,
         sos_stats=SOS_DEFINITIONS,
     )
+
+
+@app.route("/data")
+def raw_data():
+    tournament_team_slugs = load_tournament_team_slugs()
+    teams = [
+        {
+            **dict(team),
+            "made_tournament": team["slug"] in tournament_team_slugs,
+        }
+        for team in fetch_team_list()
+    ]
+    stat_definitions = build_stat_definitions()
+    columns = [
+        {"key": "name", "label": "Team", "tooltip": "Team name", "is_numeric": False},
+        {"key": "conference", "label": "Conference", "tooltip": "Conference name", "is_numeric": False},
+        {"key": "made_tournament", "label": "Tournament", "tooltip": "Made the NCAA tournament field", "is_numeric": False},
+    ]
+    columns.extend(
+        {
+            "key": key,
+            "label": label,
+            "tooltip": tooltip,
+            "is_numeric": True,
+        }
+        for key, (label, tooltip, _) in stat_definitions.items()
+    )
+    return render_template("data.html", teams=teams, columns=columns)
 
 
 @app.route("/api/teams")

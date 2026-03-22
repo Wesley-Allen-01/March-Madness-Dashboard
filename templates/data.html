@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Raw Team Data — March Madness Dashboard{% endblock %}
+
+{% block content %}
+<section class="data-page-header">
+    <div>
+        <h1>Raw Team Data</h1>
+        <p class="data-page-copy">
+            Sort any column by clicking its header. Use the filter row to narrow the table.
+            Numeric columns support filters like <code>&gt;=10</code>, <code>&lt;20</code>, or <code>10-20</code>.
+        </p>
+    </div>
+</section>
+
+<section class="stats-section">
+    <div class="data-toolbar">
+        <label for="tournament-filter" class="data-toolbar-label">Tournament teams</label>
+        <select id="tournament-filter" class="data-toolbar-select" data-tournament-filter>
+            <option value="">All teams</option>
+            <option value="yes">Made tournament</option>
+            <option value="no">Missed tournament</option>
+        </select>
+    </div>
+    <div class="table-wrapper raw-data-wrapper">
+        <table class="data-table raw-data-table" data-raw-data-table>
+            <thead>
+                <tr>
+                    {% for column in columns %}
+                    <th
+                        scope="col"
+                        class="sortable-header"
+                        data-sort-key="{{ column.key }}"
+                        data-sort-type="{{ 'number' if column.is_numeric else 'text' }}"
+                        title="{{ column.tooltip }}"
+                    >
+                        <button type="button" class="sort-button">
+                            <span>{{ column.label }}</span>
+                            <span class="sort-indicator" aria-hidden="true">↕</span>
+                        </button>
+                    </th>
+                    {% endfor %}
+                </tr>
+                <tr class="filter-row">
+                    {% for column in columns %}
+                    <th>
+                        <input
+                            type="text"
+                            class="column-filter"
+                            data-filter-key="{{ column.key }}"
+                            data-filter-type="{{ 'number' if column.is_numeric else 'text' }}"
+                            placeholder="{{ '>=10 or 10-20' if column.is_numeric else 'Filter...' }}"
+                            aria-label="Filter {{ column.label }}"
+                        >
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for team in teams %}
+                <tr>
+                    {% for column in columns %}
+                    {% set value = team[column.key] %}
+                    <td data-value="{% if column.key == 'made_tournament' %}{{ 'yes' if value else 'no' }}{% else %}{{ '' if value is none else value }}{% endif %}">
+                        {% if column.key == 'name' %}
+                        <a href="{{ url_for('team_detail', slug=team.slug) }}" class="table-team-link">{{ team.name }}</a>
+                        {% elif column.key == 'made_tournament' %}
+                        {{ "Yes" if value else "No" }}
+                        {% elif column.key == 'conference' %}
+                        {{ team.conference or "—" }}
+                        {% else %}
+                        {{ value|stat_value(column.key) }}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="table-summary" data-table-summary>{{ teams|length }} teams</p>
+</section>
+{% endblock %}
