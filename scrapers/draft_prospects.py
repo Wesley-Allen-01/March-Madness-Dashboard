@@ -13,6 +13,7 @@ PROSPECT_HEURISTIC_SQL = (
         draft_projection = COALESCE(draft_projection, ?)
     WHERE is_draft_prospect = 0
       AND class_year IN ('FR', 'SO')
+      AND minutes_per_game IS NOT NULL AND minutes_per_game >= 20.0
       AND per IS NOT NULL AND per >= 20.0
       AND ppg >= 15.0
     """,
@@ -21,6 +22,7 @@ PROSPECT_HEURISTIC_SQL = (
     SET is_draft_prospect = 1,
         draft_projection = COALESCE(draft_projection, ?)
     WHERE is_draft_prospect = 0
+      AND minutes_per_game IS NOT NULL AND minutes_per_game >= 20.0
       AND bpm IS NOT NULL AND bpm >= 8.0
     """,
     """
@@ -28,6 +30,7 @@ PROSPECT_HEURISTIC_SQL = (
     SET is_draft_prospect = 1,
         draft_projection = COALESCE(draft_projection, ?)
     WHERE is_draft_prospect = 0
+      AND minutes_per_game IS NOT NULL AND minutes_per_game >= 20.0
       AND usage_rate IS NOT NULL AND usage_rate >= 28.0
       AND ts_pct IS NOT NULL AND ts_pct >= 0.58
       AND ppg >= 16.0
